@@ -3,7 +3,7 @@ A bash script for updating A records for domains on porkbun.com. The script uses
 
 ## Usage
 
-Edit the example.json file with your own secretapikey, apikey, domain, and subdomain from Porkbun.
+Edit the example.json file with your own secretapikey, apikey, domain, and subdomains from Porkbun.
 
 Make `porkbun-dns-updater` executable and run it with the json filename as an argument:
 
