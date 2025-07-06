@@ -58,7 +58,20 @@ echo "Retrieving IP addresses..."
 newip=$(curl -s ifconfig.me) || ifconfigfail
 echo "Current IP address: $newip"
 
-for subdomain in $subdomains; do
+
+update_record() {
+    local subdomain=$1
+    local dot
+    local fulldomain
+    local tag
+    local payload_json
+    local response_json
+    local response
+    local oldip
+    local update_json
+    local result_json
+    local result
+
 
     if [[ $subdomain == "" ]]; then
         dot=""
@@ -67,6 +80,7 @@ for subdomain in $subdomains; do
     fi
 
     fulldomain=$subdomain$dot$domain
+    echo "Checking for $fulldomain"
     tag="[PBDU \"$fulldomain\"]"
 
     payload_json=$(
@@ -87,10 +101,10 @@ for subdomain in $subdomains; do
 
     if [[ $newip == $oldip ]]; then
         echo "$tag IP address has not changed. Skipping..."
-        continue
+        return 1
     elif [[ $newip =~ [^0-9.] ]]; then
         echo "$tag New IP address looks strange. Skipping..."
-        continue
+        return 1
     fi
 
     update_json=$(
@@ -112,5 +126,12 @@ for subdomain in $subdomains; do
     else
         echo "$tag ERROR: Something went wrong."
     fi
+}
 
+# Main domain
+update_record ""
+
+# Subdomains
+for subdomain in $subdomains; do
+    update_record "$subdomain"
 done
