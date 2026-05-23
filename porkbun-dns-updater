@@ -73,58 +73,55 @@ update_record() {
     local result
 
 
-    if [[ $subdomain == "" ]]; then
-        dot=""
-    else
+    if [[ -n $subdomain ]]; then
         dot="."
-    fi
+        fulldomain=$subdomain$dot$domain
+        echo "Checking for $fulldomain"
+        tag="[PBDU \"$fulldomain\"]"
 
-    fulldomain=$subdomain$dot$domain
-    echo "Checking for $fulldomain"
-    tag="[PBDU \"$fulldomain\"]"
+        payload_json=$(
+            jq --null-input \
+                --arg secretapikey "$secretapikey" \
+                --arg apikey "$apikey" \
+                '$ARGS.named'
+        )
+        response_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload_json" \
+            "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$domain/$type/$subdomain")
+        response=$(jq '.status' <<< "$response_json")
+        if [[ $response != "\"SUCCESS\"" ]]; then
+            recordretreivefail
+        fi
 
-    payload_json=$(
-        jq --null-input \
-            --arg secretapikey "$secretapikey" \
-            --arg apikey "$apikey" \
-            '$ARGS.named'
-    )
-    response_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload_json" \
-        "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$domain/$type/$subdomain")
-    response=$(jq '.status' <<< "$response_json")
-    if [[ $response != "\"SUCCESS\"" ]]; then
-        recordretreivefail
-    fi
+        oldip=$(jq -r '.records[0].content' <<< "$response_json")
+        echo "$tag Porkbun A record: $oldip"
 
-    oldip=$(jq -r '.records[0].content' <<< "$response_json")
-    echo "$tag Porkbun A record: $oldip"
+        if [[ $newip == $oldip ]]; then
+            echo "$tag IP address has not changed. Skipping..."
+            return 1
+        elif [[ $newip =~ [^0-9.] ]]; then
+            echo "$tag New IP address looks strange. Skipping..."
+            return 1
+        fi
 
-    if [[ $newip == $oldip ]]; then
-        echo "$tag IP address has not changed. Skipping..."
-        return 1
-    elif [[ $newip =~ [^0-9.] ]]; then
-        echo "$tag New IP address looks strange. Skipping..."
-        return 1
-    fi
+        update_json=$(
+            jq --null-input \
+                --arg secretapikey "$secretapikey" \
+                --arg apikey "$apikey" \
+                --arg content "$newip" \
+                '$ARGS.named'
+        )
 
-    update_json=$(
-        jq --null-input \
-            --arg secretapikey "$secretapikey" \
-            --arg apikey "$apikey" \
-            --arg content "$newip" \
-            '$ARGS.named'
-    )
+        echo "$tag Created new A record JSON payload."
 
-    echo "$tag Created new A record JSON payload."
+        result_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$update_json" \
+            "https://api.porkbun.com/api/json/v3/dns/editByNameType/$domain/$type/$subdomain")
+        result=$(jq '.status' <<< "$result_json")
 
-    result_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$update_json" \
-        "https://api.porkbun.com/api/json/v3/dns/editByNameType/$domain/$type/$subdomain")
-    result=$(jq '.status' <<< "$result_json")
-
-    if [[ $result == "\"SUCCESS\"" ]]; then
-        echo "$tag SUCCESS: Updated Porkbun A record for $fulldomain."
-    else
-        echo "$tag ERROR: Something went wrong."
+        if [[ $result == "\"SUCCESS\"" ]]; then
+            echo "$tag SUCCESS: Updated Porkbun A record for $fulldomain."
+        else
+            echo "$tag ERROR: Something went wrong."
+        fi
     fi
 }
 
