@@ -129,7 +129,7 @@ update_record() {
 }
 
 # Main domain
-update_record ""
+# update_record ""
 
 # Subdomains
 for subdomain in $subdomains; do
