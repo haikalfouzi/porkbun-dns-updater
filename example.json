@@ -2,5 +2,5 @@
   "secretapikey": "secretlongstring",
   "apikey": "longstring",
   "domain": "domain.tld",
-  "subdomain": "subdomain"
+  "subdomains": ["subdomain1", "subdomain2"]
 }

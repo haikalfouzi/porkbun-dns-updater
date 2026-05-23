@@ -51,63 +51,87 @@ domain="${domain//\"}"
 # type=$(jq '.type' <<< $file) || jsonreadfail
 # type="${type//\"}"
 type="A"
-subdomain=$(jq '.subdomain' <<< $file) || jsonreadfail
-subdomain="${subdomain//\"}"
+subdomains=$(jq -r '.subdomains[]' <<< $file) || jsonreadfail
 
-if [[ $subdomain == "" ]]; then
-    dot=""
+# Get current IP
+echo "Retrieving IP addresses..."
+newip=$(curl -s -4 ifconfig.me) || ifconfigfail
+echo "Current IP address: $newip"
+
+
+update_record() {
+    local subdomain=$1
+    local dot
+    local fulldomain
+    local tag
+    local payload_json
+    local response_json
+    local response
+    local oldip
+    local update_json
+    local result_json
+    local result
+
+
+    if [[ $subdomain == "" ]]; then
+        dot=""
     else
-    dot="."
-fi
+        dot="."
+    fi
 
-fulldomain=$subdomain$dot$domain
-tag="[PBDU \"$fulldomain\"]"
+    fulldomain=$subdomain$dot$domain
+    echo "Checking for $fulldomain"
+    tag="[PBDU \"$fulldomain\"]"
 
-payload_json=$(
-    jq --null-input \
-        --arg secretapikey "$secretapikey" \
-        --arg apikey "$apikey" \
-        '$ARGS.named'
-)
+    payload_json=$(
+        jq --null-input \
+            --arg secretapikey "$secretapikey" \
+            --arg apikey "$apikey" \
+            '$ARGS.named'
+    )
+    response_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload_json" \
+        "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$domain/$type/$subdomain")
+    response=$(jq '.status' <<< "$response_json")
+    if [[ $response != "\"SUCCESS\"" ]]; then
+        recordretreivefail
+    fi
 
-echo "$tag Retrieving IP addresses..."
+    oldip=$(jq -r '.records[0].content' <<< "$response_json")
+    echo "$tag Porkbun A record: $oldip"
 
-response_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$payload_json" https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$domain/$type/$subdomain)
-response=$(jq '.status' <<< "$response_json")
-if [[ $response != "\"SUCCESS\"" ]] ; then
-    recordretreivefail
-fi
-
-oldip=$(jq '.records[]' <<< "$response_json" | jq '.content')
-oldip="${oldip//\"}"
-echo "$tag Porkbun A record: $oldip"
-
-newip=$(curl -s -4 ifconfig.me) 
-echo "$tag Current IP address: $newip" || ifconfigfail
-if [[ $newip == $oldip ]] ; then
-    echo "$tag IP address has not changed. Stopping..."
-    exit
+    if [[ $newip == $oldip ]]; then
+        echo "$tag IP address has not changed. Skipping..."
+        return 1
     elif [[ $newip =~ [^0-9.] ]]; then
-    echo "$tag New IP address looks strange. Stopping..." 
-    exit
-fi
+        echo "$tag New IP address looks strange. Skipping..."
+        return 1
+    fi
 
-update_json=$(
-    jq --null-input \
-        --arg secretapikey "$secretapikey" \
-        --arg apikey "$apikey" \
-        --arg content "$newip" \
-        '$ARGS.named'
-)
-echo "$tag Created new A record JSON payload."
+    update_json=$(
+        jq --null-input \
+            --arg secretapikey "$secretapikey" \
+            --arg apikey "$apikey" \
+            --arg content "$newip" \
+            '$ARGS.named'
+    )
 
-result_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$update_json" https://api.porkbun.com/api/json/v3/dns/editByNameType/$domain/$type/$subdomain)
-result=$(jq '.status' <<< "$result_json")
+    echo "$tag Created new A record JSON payload."
 
-if [[ $result == "\"SUCCESS\"" ]] ; then
-    echo "$tag SUCCESS: Updated Porkbun A record for $fulldomain."
-    exit
+    result_json=$(curl -s -X POST -H "Content-Type: application/json" -d "$update_json" \
+        "https://api.porkbun.com/api/json/v3/dns/editByNameType/$domain/$type/$subdomain")
+    result=$(jq '.status' <<< "$result_json")
+
+    if [[ $result == "\"SUCCESS\"" ]]; then
+        echo "$tag SUCCESS: Updated Porkbun A record for $fulldomain."
     else
-    echo "$tag ERROR: Something went wrong."
-    exit
-fi
+        echo "$tag ERROR: Something went wrong."
+    fi
+}
+
+# Main domain
+update_record ""
+
+# Subdomains
+for subdomain in $subdomains; do
+    update_record "$subdomain"
+done
