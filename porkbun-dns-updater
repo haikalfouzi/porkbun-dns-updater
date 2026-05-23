@@ -82,7 +82,7 @@ oldip=$(jq '.records[]' <<< "$response_json" | jq '.content')
 oldip="${oldip//\"}"
 echo "$tag Porkbun A record: $oldip"
 
-newip=$(curl -s ifconfig.me) 
+newip=$(curl -s -4 ifconfig.me) 
 echo "$tag Current IP address: $newip" || ifconfigfail
 if [[ $newip == $oldip ]] ; then
     echo "$tag IP address has not changed. Stopping..."
